@@ -79,7 +79,7 @@ homekit_characteristic_t cur_temp3 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE
     .type = HOMEKIT_CHARACTERISTIC_CUSTOM_SPEED, \
     .description = "FanSpeed(rpm)", \
     .format = homekit_format_uint16, \
-    .min_value=(float[])  {300}, \
+    .min_value=(float[])    {0}, \
     .max_value=(float[]) {1800}, \
     .min_step  = (float[]) {15}, \
     .permissions = homekit_permissions_paired_read \
@@ -343,7 +343,7 @@ void user_init(void) {
     
     int c_hash=ota_read_sysparam(&manufacturer.value.string_value,&serial.value.string_value,
                                       &model.value.string_value,&revision.value.string_value);
-    c_hash=1; revision.value.string_value="0.0.1"; //cheat line
+    //c_hash=1; revision.value.string_value="0.0.1"; //cheat line
     config.accessories[0]->config_number=c_hash;
     
     homekit_server_init(&config);
