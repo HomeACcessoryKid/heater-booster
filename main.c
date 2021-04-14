@@ -3,7 +3,8 @@
  *  It uses any ESP8266 with as little as 1MB flash. 
  *  GPIO-2 is used as a bus with one-wire DS18B20 sensors to measure various temperatures
  *  GPIO-3 is used for I2S to generate the pwm signal
- *  GPIO-4 is used for interupt driven decoding of tachometer signal from one fan
+ *  GPIO-4 is used to control the first  bank of 8 fans (because fans are class A and do not switch off by themselves)
+ *  GPIO-5 is used to control the second bank of 7 fans (because fans are class A and do not switch off by themselves)
  *  GPIO-0 is reading a manual override switch
  *  UDPlogger is used to have remote logging
  *  LCM is enabled in case you want remote updates
@@ -34,11 +35,14 @@
  #error You must set VERSION=x.y.z to match github version tag x.y.z
 #endif
 
-#ifndef TACHO_PIN
- #error TACHO_PIN is not specified
-#endif
 #ifndef SENSOR_PIN
  #error SENSOR_PIN is not specified
+#endif
+#ifndef BANK1_PIN
+ #error BANK1_PIN is not specified
+#endif
+#ifndef BANK2_PIN
+ #error BANK2_PIN is not specified
 #endif
 #ifndef SWITCH_PIN
  #error SWITCH_PIN is not specified
@@ -66,34 +70,13 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 //    config.accessories[0]->config_number=c_hash;
 // end of OTA add-in instructions
 
-homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  3 );
+homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  0 );
 homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 0 );
 homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         21.5 );
 homekit_characteristic_t cur_temp1 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         1.0 );
 homekit_characteristic_t dis_temp1 = HOMEKIT_CHARACTERISTIC_(TEMPERATURE_DISPLAY_UNITS,     0 );
 homekit_characteristic_t cur_temp2 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         2.0 );
 homekit_characteristic_t cur_temp3 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         3.0 );
-
-#define HOMEKIT_CHARACTERISTIC_CUSTOM_SPEED HOMEKIT_CUSTOM_UUID("F000000A")
-#define HOMEKIT_DECLARE_CHARACTERISTIC_CUSTOM_SPEED(_value, ...) \
-    .type = HOMEKIT_CHARACTERISTIC_CUSTOM_SPEED, \
-    .description = "FanSpeed(rpm)", \
-    .format = homekit_format_uint16, \
-    .min_value=(float[])    {0}, \
-    .max_value=(float[]) {1800}, \
-    .min_step  = (float[]) {15}, \
-    .permissions = homekit_permissions_paired_read \
-                 | homekit_permissions_paired_write \
-                 | homekit_permissions_notify, \
-    .value = HOMEKIT_UINT16_(_value), \
-    ##__VA_ARGS__
-    
-void speed_set(homekit_value_t value); 
-homekit_characteristic_t speed=HOMEKIT_CHARACTERISTIC_(CUSTOM_SPEED, 600, .setter=speed_set);
-void speed_set(homekit_value_t value) {
-    UDPLUS("Speed: %d\n", value.int_value);
-    speed.value=value;
-}
 
 // void identify_task(void *_args) {
 //     vTaskDelete(NULL);
@@ -108,11 +91,6 @@ void identify(homekit_value_t _value) {
 
 static   dma_descriptor_t dma_block;
 uint32_t dma_buf[1];
-
-int half_rev=0;
-static void handle_rx(uint8_t interrupted_pin) {
-    half_rev++;
-}
 
 #define TEMP2HK(n)  do {old_t##n=cur_temp##n.value.float_value; \
                         cur_temp##n.value.float_value=isnan(temp[S##n])?S##n##avg:(float)(int)(temp[S##n]*10+0.5)/10; \
@@ -202,14 +180,17 @@ void vTimerCallback( TimerHandle_t xTimer ) {
     if (switch_state<0) switch_state=0;
     if (switch_state>3) switch_state=3;
     switch_on=switch_state>>1;
+
+    gpio_write(BANK1_PIN,tgt_heat1.value.int_value/2);
+    gpio_write(BANK2_PIN,tgt_heat1.value.int_value%2);
+    printf("Bank1: %d  Bank2: %d\n",gpio_read(BANK1_PIN),gpio_read(BANK2_PIN));
+    
     switch (timeIndex) { //send commands
         case 0: //measure temperature
             xTaskNotifyGive( tempTask ); //temperature measurement start
             vTaskDelay(1); //prevent interference between OneWire and OT-receiver
             break;
-        case 1: //measure fanspeed (one pulse per half_rev)
-            speed.value.int_value=half_rev*60/(BEAT*2);
-            half_rev=0;
+        case 1: //nothing yet
             break;
         case 2: //set PWM dutycycle
             if (++pwm > 32) pwm=0;
@@ -219,8 +200,8 @@ void vTimerCallback( TimerHandle_t xTimer ) {
             gettimeofday(&tv, NULL);
             time_t now=tv.tv_sec;
             struct tm *tm = localtime(&now);
-            printf("@%d Sw%d S1=%7.4f S2=%7.4f S3=%7.4f PWM=%2d SP=%-4d @%s" \
-                    ,seconds,switch_on,temp[S1],temp[S2],temp[S3],pwm,speed.value.int_value,ctime(&now));
+            printf("@%d Sw%d S1=%7.4f S2=%7.4f S3=%7.4f PWM=%2d @%s" \
+                    ,seconds,switch_on,temp[S1],temp[S2],temp[S3],pwm,ctime(&now));
             break;
         case 4: //nothing yet
             break;
@@ -247,8 +228,8 @@ void device_init() {
 //         gpio_enable(LED_PIN, GPIO_OUTPUT); gpio_write(LED_PIN, 0);
     gpio_set_pullup(SENSOR_PIN, true, true);
     gpio_enable(SWITCH_PIN, GPIO_INPUT);
-    gpio_enable(TACHO_PIN, GPIO_INPUT);
-    gpio_set_interrupt(TACHO_PIN, GPIO_INTTYPE_EDGE_NEG, handle_rx);
+    gpio_enable(BANK1_PIN, GPIO_OUTPUT); gpio_write(BANK1_PIN, 0);
+    gpio_enable(BANK2_PIN, GPIO_OUTPUT); gpio_write(BANK2_PIN, 0);
     //OT_SEND_PIN is GPIO3 = RX0 because hardcoded in i2s
     i2s_pins_t i2s_pins = {.data = true, .clock = false, .ws = false};
     i2s_clock_div_t clock_div = i2s_get_clock_div(800000); //32bits in 40microseconds is 800kHz
@@ -293,7 +274,6 @@ homekit_accessory_t *accessories[] = {
                 .characteristics=(homekit_characteristic_t*[]){
                     HOMEKIT_CHARACTERISTIC(NAME, "Water T-low"),
                     &cur_temp3,
-                    &speed,
                     NULL
                 }),
             NULL
@@ -336,9 +316,6 @@ homekit_server_config_t config = {
 
 void user_init(void) {
     uart_set_baud(0, 115200);
-//     udplog_init(3);
-//     UDPLUS("\n\n\nHeater-Booster " VERSION "\n");
-    
     device_init();
     
     int c_hash=ota_read_sysparam(&manufacturer.value.string_value,&serial.value.string_value,
