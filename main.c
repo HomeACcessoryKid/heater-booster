@@ -71,7 +71,7 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 // end of OTA add-in instructions
 
 homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  3 );
-homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 3 );
+homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 0 );
 homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         21.5 );
 homekit_characteristic_t cur_temp1 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         1.0 );
 homekit_characteristic_t dis_temp1 = HOMEKIT_CHARACTERISTIC_(TEMPERATURE_DISPLAY_UNITS,     0 );
@@ -191,12 +191,8 @@ void vTimerCallback( TimerHandle_t xTimer ) {
         case 0: //measure temperature
             xTaskNotifyGive( tempTask ); //temperature measurement start
             break;
-        case 1: // calc avg temperatures and display values
+        case 1: // calc avg temperatures
             CalcAvg(S1); CalcAvg(S2); CalcAvg(S3);
-            gettimeofday(&tv, NULL);
-            time_t now=tv.tv_sec;
-            printf("@%d Sw%d PWM=%2d dir=%2d S1anchor=%7.4f S1avg=%7.4f S1=%7.4f S2=%7.4f S3=%7.4f bank1=%d bank2=%d @%s" \
-                    ,seconds,switch_on,pwm,dir,S1anchor,S1avg,temp[S1],temp[S2],temp[S3],gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now));
             break;
         default: break;
     }
@@ -240,6 +236,11 @@ void vTimerCallback( TimerHandle_t xTimer ) {
                 break;
             default: break;
         }
+
+        gettimeofday(&tv, NULL);
+        time_t now=tv.tv_sec;
+        printf("@%d Sw%d PWM=%2d dir=%2d S1anchor=%7.4f S1avg=%7.4f S1=%7.4f S2=%7.4f S3=%7.4f bank1=%d bank2=%d @%s" \
+                ,seconds,switch_on,pwm,dir,S1anchor,S1avg,temp[S1],temp[S2],temp[S3],gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now));
 
         //save state to RTC memory
         uint32_t *dp;
