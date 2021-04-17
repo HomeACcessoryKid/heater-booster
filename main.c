@@ -214,12 +214,12 @@ void vTimerCallback( TimerHandle_t xTimer ) {
                 if (deltaT<0) pwm=(int)(deltaT*-10);
                 // no break on purpose
             case 3: //auto
-                if (S2avg>32) {
+                if (S2avg>27) {
                     cur_heat1.value.int_value=1;
                     if (deltaT<-0.2) gpio_write(BANK1_PIN,1); else gpio_write(BANK1_PIN,0);
                     if (deltaT<-0.5) gpio_write(BANK2_PIN,1); else gpio_write(BANK2_PIN,0);
                     if (pwm<32) dma_buf[0]=0xffffffff<<pwm; else dma_buf[0]=0;
-                } else if (S2avg<28) {
+                } else if (S2avg<26) {
                     gpio_write(BANK1_PIN,0);
                     gpio_write(BANK2_PIN,0);                    
                     cur_heat1.value.int_value=0;
@@ -245,8 +245,8 @@ void vTimerCallback( TimerHandle_t xTimer ) {
 
         gettimeofday(&tv, NULL);
         time_t now=tv.tv_sec;
-        printf("PWM=%2d dir=%s S1anchor=%7.4f S1avg=%7.4f S2avg=%7.4f S3avg=%7.4f bank1=%d bank2=%d %s =%ds" \
-                ,pwm,dir>0?"U":"D",S1anchor,S1avg,S2avg,S3avg,gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now),seconds);
+        printf("PWM=%2d dir=%s S1anchor=%7.4f S1avg=%7.4f S2avg=%7.4f S3avg=%7.4f bank1=%d bank2=%d @%ds %s" \
+                ,pwm,dir>0?"U":"D",S1anchor,S1avg,S2avg,S3avg,gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),seconds,ctime(&now));
 
         //save state to RTC memory
         uint32_t *dp;
