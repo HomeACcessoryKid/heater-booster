@@ -70,8 +70,8 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 //    config.accessories[0]->config_number=c_hash;
 // end of OTA add-in instructions
 
-homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  0 );
-homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 0 );
+homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  3 );
+homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 3 );
 homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         21.5 );
 homekit_characteristic_t cur_temp1 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         1.0 );
 homekit_characteristic_t dis_temp1 = HOMEKIT_CHARACTERISTIC_(TEMPERATURE_DISPLAY_UNITS,     0 );
@@ -97,7 +97,7 @@ uint32_t dma_buf[1];
                         if (old_t##n!=cur_temp##n.value.float_value) \
                             homekit_characteristic_notify(&cur_temp##n,HOMEKIT_FLOAT(cur_temp##n.value.float_value)); \
                     } while (0) //TODO: do we need to test for changed values or is that embedded in notify routine?
-#define BEAT 5 //in seconds
+#define BEAT 10 //in seconds
 #define SENSORS 3
 #define S1 7 //       room temp sensor
 #define S2 2 // water high temp sensor
@@ -168,8 +168,10 @@ void init_task(void *argv) {
             if ( !isnan(temp[Sx]) && temp[Sx]!=85 )         Sx##temp[0]=temp[Sx];    \
             Sx##avg=(Sx##temp[0]+Sx##temp[1]+Sx##temp[2]+Sx##temp[3]+Sx##temp[4]+Sx##temp[5])/6.0; \
         } while(0)
+#define HYSTERESIS 0.07 // considering the smallest step of a DS18B20 is 0.06125
 static TaskHandle_t tempTask = NULL;
-int timeIndex=0,switch_state=0,pwm=0;
+float deltaT,S1anchor=0;
+int timeIndex=0,switch_state=0,pwm=0,dir=1;
 TimerHandle_t xTimer;
 void vTimerCallback( TimerHandle_t xTimer ) {
     struct timeval tv;
@@ -181,34 +183,64 @@ void vTimerCallback( TimerHandle_t xTimer ) {
     if (switch_state>3) switch_state=3;
     switch_on=switch_state>>1;
 
-    gpio_write(BANK1_PIN,tgt_heat1.value.int_value/2);
-    gpio_write(BANK2_PIN,tgt_heat1.value.int_value%2);
-    printf("Bank1: %d  Bank2: %d\n",gpio_read(BANK1_PIN),gpio_read(BANK2_PIN));
+//     gpio_write(BANK1_PIN,tgt_heat1.value.int_value/2);
+//     gpio_write(BANK2_PIN,tgt_heat1.value.int_value%2);
+//     printf("Bank1: %d  Bank2: %d\n",gpio_read(BANK1_PIN),gpio_read(BANK2_PIN));
     
     switch (timeIndex) { //send commands
         case 0: //measure temperature
             xTaskNotifyGive( tempTask ); //temperature measurement start
-            vTaskDelay(1); //prevent interference between OneWire and OT-receiver
             break;
-        case 1: //nothing yet
-            break;
-        case 2: //set PWM dutycycle
-            if (++pwm > 32) pwm=0;
-            if (pwm<32) dma_buf[0]=0xffffffff<<pwm; else dma_buf[0]=0;
-            break;
-        case 3: //display values
+        case 1: // calc avg temperatures and display values
+            CalcAvg(S1); CalcAvg(S2); CalcAvg(S3);
             gettimeofday(&tv, NULL);
             time_t now=tv.tv_sec;
-            struct tm *tm = localtime(&now);
-            printf("@%d Sw%d S1=%7.4f S2=%7.4f S3=%7.4f PWM=%2d @%s" \
-                    ,seconds,switch_on,temp[S1],temp[S2],temp[S3],pwm,ctime(&now));
-            break;
-        case 4: //nothing yet
+            printf("@%d Sw%d PWM=%2d dir=%2d S1anchor=%7.4f S1avg=%7.4f S1=%7.4f S2=%7.4f S3=%7.4f bank1=%d bank2=%d @%s" \
+                    ,seconds,switch_on,pwm,dir,S1anchor,S1avg,temp[S1],temp[S2],temp[S3],gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now));
             break;
         default: break;
     }
 
-    if (seconds%60==30) {
+    if (seconds%60==51) {
+        if (dir*(S1anchor-S1avg)>HYSTERESIS) {
+            dir*=-1; S1anchor=S1avg;
+        } else {
+            if (dir*(S1anchor-S1avg)<0) S1anchor=S1avg;
+        }
+        deltaT=S1anchor-tgt_temp1.value.float_value;
+        pwm=0;
+        switch (tgt_heat1.value.int_value) {
+            case 0: //off
+                gpio_write(BANK1_PIN,0);
+                gpio_write(BANK2_PIN,0);
+                break;
+            case 1: //heat
+                if (deltaT<0) pwm=(int)(deltaT*-10);
+                // no break on purpose
+            case 3: //auto
+                if (S2avg>32) {
+                    if (deltaT<-0.2) gpio_write(BANK1_PIN,1); else gpio_write(BANK1_PIN,0);
+                    if (deltaT<-0.5) gpio_write(BANK2_PIN,1); else gpio_write(BANK2_PIN,0);
+                    if (pwm<32) dma_buf[0]=0xffffffff<<pwm; else dma_buf[0]=0;
+                } else if (S2avg<28) {
+                    gpio_write(BANK1_PIN,0);
+                    gpio_write(BANK2_PIN,0);                    
+                }
+                break;
+            case 2: //cool
+                if (deltaT>0) {
+                    dma_buf[0]=0; // full speed on both banks
+                    gpio_write(BANK1_PIN,1);
+                    gpio_write(BANK2_PIN,1);
+                } else {
+                    dma_buf[0]=0xffffffff; // both banks off (at lowest speed (for the record))
+                    gpio_write(BANK1_PIN,0);
+                    gpio_write(BANK2_PIN,0);
+                }
+                break;
+            default: break;
+        }
+
         //save state to RTC memory
         uint32_t *dp;
         dp=(void*)&tgt_temp1.value.float_value; WRITE_PERI_REG(RTC_ADDR+4,*dp      ); //float
@@ -225,12 +257,12 @@ void device_init() {
     udplog_init(3);
     UDPLUS("\n\n\nHeater-Booster " VERSION "\n");
     
-//         gpio_enable(LED_PIN, GPIO_OUTPUT); gpio_write(LED_PIN, 0);
+//     gpio_enable(LED_PIN, GPIO_OUTPUT); gpio_write(LED_PIN, 0);
     gpio_set_pullup(SENSOR_PIN, true, true);
     gpio_enable(SWITCH_PIN, GPIO_INPUT);
     gpio_enable(BANK1_PIN, GPIO_OUTPUT); gpio_write(BANK1_PIN, 0);
     gpio_enable(BANK2_PIN, GPIO_OUTPUT); gpio_write(BANK2_PIN, 0);
-    //OT_SEND_PIN is GPIO3 = RX0 because hardcoded in i2s
+    //PWM_PIN is GPIO3 = RX0 because hardcoded in i2s
     i2s_pins_t i2s_pins = {.data = true, .clock = false, .ws = false};
     i2s_clock_div_t clock_div = i2s_get_clock_div(800000); //32bits in 40microseconds is 800kHz
     i2s_dma_init(NULL, NULL, clock_div, i2s_pins);
@@ -239,7 +271,7 @@ void device_init() {
     dma_block.datalen = 4; dma_block.blocksize = 4; // 32 bits = 4byte data
     dma_block.buf_ptr = dma_buf; //uint32_t buffer type is 4byte data
     dma_buf[0]=0xffffffff; //initial value = 0%
-    i2s_dma_start(&dma_block); //transmit the dma_buf in a loop
+    i2s_dma_start(&dma_block); //transmit the dma_buf in a loop at 25kHz
 
     xTaskCreate(temp_task,"Temp", 512, NULL, 1, &tempTask);
     xTaskCreate(init_task,"Time", 512, NULL, 6, NULL);
