@@ -72,7 +72,7 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 
 homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  3 );
 homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 0 );
-homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         21.5 );
+homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         19.5 );
 homekit_characteristic_t cur_temp1 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         1.0 );
 homekit_characteristic_t dis_temp1 = HOMEKIT_CHARACTERISTIC_(TEMPERATURE_DISPLAY_UNITS,     0 );
 homekit_characteristic_t cur_temp2 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         2.0 );
@@ -168,20 +168,19 @@ void init_task(void *argv) {
             if ( !isnan(temp[Sx]) && temp[Sx]!=85 )         Sx##temp[0]=temp[Sx];    \
             Sx##avg=(Sx##temp[0]+Sx##temp[1]+Sx##temp[2]+Sx##temp[3]+Sx##temp[4]+Sx##temp[5])/6.0; \
         } while(0)
-#define HYSTERESIS 0.07 // considering the smallest step of a DS18B20 is 0.06125
 static TaskHandle_t tempTask = NULL;
 float deltaT,S1anchor=0;
-int timeIndex=0,switch_state=0,pwm=0,dir=1;
+int timeIndex=0,switch_state=0,pwm=0,dir=1,old_heat1=0;
 TimerHandle_t xTimer;
 void vTimerCallback( TimerHandle_t xTimer ) {
     struct timeval tv;
     uint32_t seconds = ( uint32_t ) pvTimerGetTimerID( xTimer );
     vTimerSetTimerID( xTimer, (void*)seconds+1); //136 year to loop
-    int switch_on=0;
+//     int switch_on=0;
     if (gpio_read(SWITCH_PIN)) switch_state--; else switch_state++; //pin is low when switch is on
     if (switch_state<0) switch_state=0;
     if (switch_state>3) switch_state=3;
-    switch_on=switch_state>>1;
+//     switch_on=switch_state>>1;
 
 //     gpio_write(BANK1_PIN,tgt_heat1.value.int_value/2);
 //     gpio_write(BANK2_PIN,tgt_heat1.value.int_value%2);
@@ -198,7 +197,7 @@ void vTimerCallback( TimerHandle_t xTimer ) {
     }
 
     if (seconds%60==51) {
-        if (dir*(S1anchor-S1avg)>HYSTERESIS) {
+        if (dir*(S1anchor-S1avg)>0.13) { // considering the smallest step of a DS18B20 is 0.06125
             dir*=-1; S1anchor=S1avg;
         } else {
             if (dir*(S1anchor-S1avg)<0) S1anchor=S1avg;
@@ -209,18 +208,21 @@ void vTimerCallback( TimerHandle_t xTimer ) {
             case 0: //off
                 gpio_write(BANK1_PIN,0);
                 gpio_write(BANK2_PIN,0);
+                cur_heat1.value.int_value=0;
                 break;
             case 1: //heat
                 if (deltaT<0) pwm=(int)(deltaT*-10);
                 // no break on purpose
             case 3: //auto
                 if (S2avg>32) {
+                    cur_heat1.value.int_value=1;
                     if (deltaT<-0.2) gpio_write(BANK1_PIN,1); else gpio_write(BANK1_PIN,0);
                     if (deltaT<-0.5) gpio_write(BANK2_PIN,1); else gpio_write(BANK2_PIN,0);
                     if (pwm<32) dma_buf[0]=0xffffffff<<pwm; else dma_buf[0]=0;
                 } else if (S2avg<28) {
                     gpio_write(BANK1_PIN,0);
                     gpio_write(BANK2_PIN,0);                    
+                    cur_heat1.value.int_value=0;
                 }
                 break;
             case 2: //cool
@@ -228,19 +230,23 @@ void vTimerCallback( TimerHandle_t xTimer ) {
                     dma_buf[0]=0; // full speed on both banks
                     gpio_write(BANK1_PIN,1);
                     gpio_write(BANK2_PIN,1);
+                    cur_heat1.value.int_value=2;
                 } else {
                     dma_buf[0]=0xffffffff; // both banks off (at lowest speed (for the record))
                     gpio_write(BANK1_PIN,0);
                     gpio_write(BANK2_PIN,0);
+                    cur_heat1.value.int_value=0;
                 }
                 break;
             default: break;
         }
+        if (old_heat1!=cur_heat1.value.int_value) homekit_characteristic_notify(&cur_heat1,HOMEKIT_UINT8(cur_heat1.value.int_value));
+        old_heat1=cur_heat1.value.int_value;
 
         gettimeofday(&tv, NULL);
         time_t now=tv.tv_sec;
-        printf("@%d Sw%d PWM=%2d dir=%2d S1anchor=%7.4f S1avg=%7.4f S1=%7.4f S2=%7.4f S3=%7.4f bank1=%d bank2=%d @%s" \
-                ,seconds,switch_on,pwm,dir,S1anchor,S1avg,temp[S1],temp[S2],temp[S3],gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now));
+        printf("PWM=%2d dir=%s S1anchor=%7.4f S1avg=%7.4f S2avg=%7.4f S3avg=%7.4f bank1=%d bank2=%d %s =%ds" \
+                ,pwm,dir>0?"U":"D",S1anchor,S1avg,S2avg,S3avg,gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),ctime(&now),seconds);
 
         //save state to RTC memory
         uint32_t *dp;
