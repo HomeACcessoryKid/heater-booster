@@ -197,7 +197,7 @@ void vTimerCallback( TimerHandle_t xTimer ) {
     }
 
     if (seconds%60==51) {
-        if (dir*(S1anchor-S1avg)>0.13) { // considering the smallest step of a DS18B20 is 0.06125
+        if (dir*(S1anchor-S1avg)>0.5) { // there is a feedback loop between banks ON and temperature
             dir*=-1; S1anchor=S1avg;
         } else {
             if (dir*(S1anchor-S1avg)<0) S1anchor=S1avg;
