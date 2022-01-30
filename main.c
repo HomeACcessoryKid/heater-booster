@@ -30,6 +30,8 @@
 #include "math.h"
 #include <lwip/apps/sntp.h>
 #include <espressif/esp8266/eagle_soc.h>
+#include "mqtt-client.h"
+#include <sysparam.h>
 
 #ifndef VERSION
  #error You must set VERSION=x.y.z to match github version tag x.y.z
@@ -89,6 +91,7 @@ void identify(homekit_value_t _value) {
 
 /* ============== END HOMEKIT CHARACTERISTIC DECLARATIONS ================================================================= */
 
+char *dmtczidx1=NULL,*dmtczidx2=NULL,*dmtczidx3=NULL;
 static   dma_descriptor_t dma_block;
 uint32_t dma_buf[1];
 
@@ -248,6 +251,14 @@ void vTimerCallback( TimerHandle_t xTimer ) {
         printf("PWM=%2d dir=%s S1anchor=%7.4f S1avg=%7.4f S2avg=%7.4f S3avg=%7.4f bank1=%d bank2=%d @%ds %s" \
                 ,pwm,dir>0?"U":"D",S1anchor,S1avg,S2avg,S3avg,gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),seconds,ctime(&now));
 
+        int n;
+        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx1, S1avg);
+        if (n<0) printf("MQTT publish1 failed because %s\n",MQTT_CLIENT_ERROR(n));
+        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx2, S2avg);
+        if (n<0) printf("MQTT publish2 failed because %s\n",MQTT_CLIENT_ERROR(n));
+        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx3, S3avg);
+        if (n<0) printf("MQTT publish3 failed because %s\n",MQTT_CLIENT_ERROR(n));
+        
         //save state to RTC memory
         uint32_t *dp;
         dp=(void*)&tgt_temp1.value.float_value; WRITE_PERI_REG(RTC_ADDR+4,*dp      ); //float
@@ -256,6 +267,26 @@ void vTimerCallback( TimerHandle_t xTimer ) {
 
     timeIndex++; if (timeIndex==BEAT) timeIndex=0;
 } //this is a timer that restarts every 1 second
+
+mqtt_config_t mqttconf=MQTT_DEFAULT_CONFIG;
+char error[]="error";
+static void ota_string() {
+    char *otas;
+    if (sysparam_get_string("ota_string", &otas) == SYSPARAM_OK) {
+        mqttconf.host=strtok(otas,";");
+        mqttconf.user=strtok(NULL,";");
+        mqttconf.pass=strtok(NULL,";");
+        dmtczidx1=strtok(NULL,";");
+        dmtczidx2=strtok(NULL,";");
+        dmtczidx3=strtok(NULL,";");
+    }
+    if (mqttconf.host==NULL) mqttconf.host=error;
+    if (mqttconf.user==NULL) mqttconf.user=error;
+    if (mqttconf.pass==NULL) mqttconf.pass=error;
+    if (dmtczidx1==NULL) dmtczidx1=error;
+    if (dmtczidx2==NULL) dmtczidx2=error;
+    if (dmtczidx3==NULL) dmtczidx3=error;
+}
 
 homekit_server_config_t config;
 void device_init() {
@@ -280,6 +311,10 @@ void device_init() {
     dma_buf[0]=0xffffffff; //initial value = 0%
     i2s_dma_start(&dma_block); //transmit the dma_buf in a loop at 25kHz
 
+    sysparam_set_string("ota_string", "192.168.178.5;booster;fakepassword;64;65;66"); //can be used if not using LCM
+    ota_string();
+    mqttconf.queue_size=9;
+    mqtt_client_init(&mqttconf);
     xTaskCreate(temp_task,"Temp", 512, NULL, 1, &tempTask);
     xTaskCreate(init_task,"Time", 512, NULL, 6, NULL);
     xTimer=xTimerCreate( "Timer", 1000/portTICK_PERIOD_MS, pdTRUE, (void*)0, vTimerCallback);

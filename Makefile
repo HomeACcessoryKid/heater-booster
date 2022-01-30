@@ -7,6 +7,7 @@ EXTRA_COMPONENTS = \
     extras/onewire \
     extras/ds18b20 \
     extras/i2s_dma \
+    extras/paho_mqtt_c \
 	$(abspath esp-wolfssl) \
 	$(abspath esp-cjson) \
 	$(abspath esp-homekit) \
@@ -37,6 +38,7 @@ include $(SDK_PATH)/common.mk
 monitor:
 	$(FILTEROUTPUT) --port $(ESPPORT) --baud $(ESPBAUD) --elf $(PROGRAM_OUT)
 
-signature:
-	$(openssl sha384 -binary -out firmware/main.bin.sig firmware/main.bin)
-	$(printf "%08x" `cat firmware/main.bin | wc -c`| xxd -r -p >>firmware/main.bin.sig)
+sig:
+	openssl sha384 -binary -out firmware/main.bin.sig firmware/main.bin
+	printf "%08x" `cat firmware/main.bin | wc -c`| xxd -r -p >>firmware/main.bin.sig
+	ls -l firmware
