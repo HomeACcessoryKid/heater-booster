@@ -262,13 +262,16 @@ void vTimerCallback( TimerHandle_t xTimer ) {
         printf("PWM=%2d dir=%s S1anchor=%7.4f S1avg=%7.4f S2avg=%7.4f S3avg=%7.4f bank1=%d bank2=%d @%ds %s" \
                 ,pwm,dir>0?"U":"D",S1anchor,S1avg,S2avg,S3avg,gpio_read(BANK1_PIN),gpio_read(BANK2_PIN),seconds,ctime(&now));
 
-        int n;
-        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx1, S1avg);
-        if (n<0) printf("MQTT publish1 failed because %s\n",MQTT_CLIENT_ERROR(n));
-        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx2, S2avg);
-        if (n<0) printf("MQTT publish2 failed because %s\n",MQTT_CLIENT_ERROR(n));
-        n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx3, S3avg);
-        if (n<0) printf("MQTT publish3 failed because %s\n",MQTT_CLIENT_ERROR(n));
+//         int n;
+//         n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx1, S1avg);
+//         if (n<0) printf("MQTT publish1 failed because %s\n",MQTT_CLIENT_ERROR(n));
+//         n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx2, S2avg);
+//         if (n<0) printf("MQTT publish2 failed because %s\n",MQTT_CLIENT_ERROR(n));
+//         n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx3, S3avg);
+//         if (n<0) printf("MQTT publish3 failed because %s\n",MQTT_CLIENT_ERROR(n));
+
+        int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx1, S1avg, dmtczidx2, S2avg, dmtczidx3, S3avg);
+        if (n<0) printf("MQTT publish failed because %s\n",MQTT_CLIENT_ERROR(n));
         
         //save state to RTC memory
         uint32_t *dp;
@@ -327,6 +330,7 @@ void device_init() {
     //sysparam_set_string("ota_string", "192.168.178.5;booster;fakepassword;64;65;66;67"); //can be used if not using LCM
     ota_string();
     mqttconf.queue_size=9;
+    mqttconf.msg_len=150;
     mqtt_client_init(&mqttconf);
     xTaskCreate(temp_task,"Temp", 512, NULL, 1, &tempTask);
     xTaskCreate(init_task,"Time", 512, NULL, 6, NULL);
