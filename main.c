@@ -96,7 +96,8 @@ void tgt_temp1_set(homekit_value_t value) {
         UDPLUO("Invalid target-value format: %d\n", value.format);
         return;
     }
-    int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx4, value.float_value);
+    tgt_temp1.value=value;
+    int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx4, tgt_temp1.value.float_value);
     if (n<0) printf("MQTT publish4 failed because %s\n",MQTT_CLIENT_ERROR(n));
 }
 
