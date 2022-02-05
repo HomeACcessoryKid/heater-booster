@@ -91,7 +91,6 @@ static void  mqtt_task(void *pvParameters) {
         }
         printf("done\n");
         backoff = BACKOFF1;
-        xQueueReset(publish_queue);
 
         while(1) {
             msg[mqttconf->msg_len - 1] = 0;
@@ -113,6 +112,7 @@ static void  mqtt_task(void *pvParameters) {
         }
         printf("%s: connection dropped, connecting again\n", __func__);
         mqtt_network_disconnect(&network);
+        xQueueReset(publish_queue);
     }
 }
 
