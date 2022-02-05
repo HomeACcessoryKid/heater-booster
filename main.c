@@ -327,7 +327,7 @@ void device_init() {
     //sysparam_set_string("ota_string", "192.168.178.5;booster;fakepassword;64;65;66;67"); //can be used if not using LCM
     ota_string();
     mqttconf.queue_size=9;
-    mqttconf.topic="domoticz/in/booster";
+    mqttconf.topic="domoticz/in/65";
     mqtt_client_init(&mqttconf);
     xTaskCreate(temp_task,"Temp", 512, NULL, 1, &tempTask);
     xTaskCreate(init_task,"Time", 512, NULL, 6, NULL);
