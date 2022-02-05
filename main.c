@@ -270,7 +270,7 @@ void vTimerCallback( TimerHandle_t xTimer ) {
 //         n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx3, S3avg);
 //         if (n<0) printf("MQTT publish3 failed because %s\n",MQTT_CLIENT_ERROR(n));
 
-        int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx1, S1avg, dmtczidx2, S2avg, dmtczidx3, S3avg);
+        int n=mqtt_client_publish("[{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"},{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"},{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}]", dmtczidx1, S1avg, dmtczidx2, S2avg, dmtczidx3, S3avg);
         if (n<0) printf("MQTT publish failed because %s\n",MQTT_CLIENT_ERROR(n));
         
         //save state to RTC memory
