@@ -159,6 +159,8 @@ void init_task(void *argv) {
         dp=(void*)&(tgt_temp1.value.float_value);*dp=READ_PERI_REG(RTC_ADDR+4);
     }
     printf("INITIAL setpoint=%4.1f\n", tgt_temp1.value.float_value);
+    int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx4, tgt_temp1.value.float_value);
+    if (n<0) printf("MQTT publish4 failed because %s\n",MQTT_CLIENT_ERROR(n));
     S1temp[0]=22;
     
     setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/3", 1); tzset();
