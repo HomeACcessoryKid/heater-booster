@@ -1,5 +1,6 @@
 /*  (c) 2021-2022 HomeAccessoryKid 
  *  Intended as a Domoticz publish only feed
+ *  In the Makefile add EXTRA_COMPONENTS = extras/paho_mqtt_c 
  *  create a mqtt_config_t with intial value MQTT_DEFAULT_CONFIG
  *  fill in the host, user and pass and non-default values
  *  then call mqtt_client_init

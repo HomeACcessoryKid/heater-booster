@@ -72,9 +72,10 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 //    config.accessories[0]->config_number=c_hash;
 // end of OTA add-in instructions
 
+void tgt_temp1_set(homekit_value_t value);
 homekit_characteristic_t tgt_heat1 = HOMEKIT_CHARACTERISTIC_(TARGET_HEATING_COOLING_STATE,  3 );
 homekit_characteristic_t cur_heat1 = HOMEKIT_CHARACTERISTIC_(CURRENT_HEATING_COOLING_STATE, 0 );
-homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         19.5 );
+homekit_characteristic_t tgt_temp1 = HOMEKIT_CHARACTERISTIC_(TARGET_TEMPERATURE,         19.5, .setter=tgt_temp1_set);
 homekit_characteristic_t cur_temp1 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         1.0 );
 homekit_characteristic_t dis_temp1 = HOMEKIT_CHARACTERISTIC_(TEMPERATURE_DISPLAY_UNITS,     0 );
 homekit_characteristic_t cur_temp2 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE,         2.0 );
@@ -87,6 +88,16 @@ homekit_characteristic_t cur_temp3 = HOMEKIT_CHARACTERISTIC_(CURRENT_TEMPERATURE
 void identify(homekit_value_t _value) {
     UDPLUS("Identify\n");
 //    xTaskCreate(identify_task, "identify", 256, NULL, 2, NULL);
+}
+
+char *dmtczidx4=NULL;
+void tgt_temp1_set(homekit_value_t value) {
+    if (value.format != homekit_format_float) {
+        UDPLUO("Invalid target-value format: %d\n", value.format);
+        return;
+    }
+    int n=mqtt_client_publish("{\"idx\":%s,\"nvalue\":0,\"svalue\":\"%.1f\"}", dmtczidx4, value.float_value);
+    if (n<0) printf("MQTT publish4 failed because %s\n",MQTT_CLIENT_ERROR(n));
 }
 
 /* ============== END HOMEKIT CHARACTERISTIC DECLARATIONS ================================================================= */
@@ -279,6 +290,7 @@ static void ota_string() {
         dmtczidx1=strtok(NULL,";");
         dmtczidx2=strtok(NULL,";");
         dmtczidx3=strtok(NULL,";");
+        dmtczidx4=strtok(NULL,";");
     }
     if (mqttconf.host==NULL) mqttconf.host=error;
     if (mqttconf.user==NULL) mqttconf.user=error;
@@ -286,6 +298,7 @@ static void ota_string() {
     if (dmtczidx1==NULL) dmtczidx1=error;
     if (dmtczidx2==NULL) dmtczidx2=error;
     if (dmtczidx3==NULL) dmtczidx3=error;
+    if (dmtczidx4==NULL) dmtczidx4=error;
 }
 
 homekit_server_config_t config;
@@ -311,7 +324,7 @@ void device_init() {
     dma_buf[0]=0xffffffff; //initial value = 0%
     i2s_dma_start(&dma_block); //transmit the dma_buf in a loop at 25kHz
 
-    sysparam_set_string("ota_string", "192.168.178.5;booster;fakepassword;64;65;66"); //can be used if not using LCM
+    //sysparam_set_string("ota_string", "192.168.178.5;booster;fakepassword;64;65;66;67"); //can be used if not using LCM
     ota_string();
     mqttconf.queue_size=9;
     mqtt_client_init(&mqttconf);
