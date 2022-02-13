@@ -180,6 +180,7 @@ void init_task(void *argv) {
     vTaskDelete(NULL);
 }
 
+#define SWITCHPOINT 25
 #define CalcAvg(Sx) do {            Sx##temp[5]=Sx##temp[4];Sx##temp[4]=Sx##temp[3]; \
             Sx##temp[3]=Sx##temp[2];Sx##temp[2]=Sx##temp[1];Sx##temp[1]=Sx##temp[0]; \
             if ( !isnan(temp[Sx]) && temp[Sx]!=85 )         Sx##temp[0]=temp[Sx];    \
@@ -231,12 +232,12 @@ void vTimerCallback( TimerHandle_t xTimer ) {
                 if (deltaT<0) pwm=(int)(deltaT*-10);
                 // no break on purpose
             case 3: //auto
-                if (S2avg>27) {
+                if (S2avg>SWITCHPOINT) {
                     cur_heat1.value.int_value=1;
                     if (deltaT<-0.2) gpio_write(BANK1_PIN,1); else gpio_write(BANK1_PIN,0);
                     if (deltaT<-0.5) gpio_write(BANK2_PIN,1); else gpio_write(BANK2_PIN,0);
                     if (pwm<32) dma_buf[0]=0xffffffff<<pwm; else dma_buf[0]=0;
-                } else if (S2avg<26) {
+                } else if (S2avg<SWITCHPOINT-1) {
                     gpio_write(BANK1_PIN,0);
                     gpio_write(BANK2_PIN,0);                    
                     cur_heat1.value.int_value=0;
