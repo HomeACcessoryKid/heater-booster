@@ -180,7 +180,7 @@ void init_task(void *argv) {
     vTaskDelete(NULL);
 }
 
-#define SWITCHPOINT 25
+#define SWITCHPOINT 22
 #define CalcAvg(Sx) do {            Sx##temp[5]=Sx##temp[4];Sx##temp[4]=Sx##temp[3]; \
             Sx##temp[3]=Sx##temp[2];Sx##temp[2]=Sx##temp[1];Sx##temp[1]=Sx##temp[0]; \
             if ( !isnan(temp[Sx]) && temp[Sx]!=85 )         Sx##temp[0]=temp[Sx];    \
